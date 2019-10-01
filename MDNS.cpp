@@ -28,7 +28,14 @@
 
 extern "C" {
    #include <utility/EthernetUtil.h>
+   uint32_t fkb_external_printf(const char *str, ...);
 }
+
+#if defined(DEBUG_LOGGING)
+#define DEBUG_PRINTF(str, ...) fkb_external_printf(str, ##__VA_ARGS__)
+#else
+#define DEBUG_PRINTF(str, ...)
+#endif
 
 #include "MDNS.h"
 
@@ -128,6 +135,7 @@ MDNS::MDNS(UDP& udp)
 
 MDNS::~MDNS()
 {
+  DEBUG_PRINTF("MDNS::~MDNS()");
 	this->_udp->stop();
 }
 
@@ -148,6 +156,8 @@ int MDNS::begin(const IPAddress& ip, const char* name)
 	statusCode = this->setName(name);
 	if (statusCode)
 	statusCode = this->_udp->beginMulticast(mdnsMulticastIPAddr, MDNS_SERVER_PORT);
+
+  DEBUG_PRINTF("MDNS::begin()");
 
 	return statusCode;
 }
@@ -282,7 +292,7 @@ MDNSError_t MDNS::_sendMDNSMessage(uint32_t /*peerAddress*/, uint32_t xid, int t
 #endif
    uint8_t* buf;
    
-
+   DEBUG_PRINTF("MDNS::_sendMDNSMessage(%d, %d, %d)\n", xid, type, serviceRecord);
 
 #if defined(_USE_MALLOC_)
    dnsHeader = (DNSHeader_t*)my_malloc(sizeof(DNSHeader_t));
@@ -300,6 +310,7 @@ MDNSError_t MDNS::_sendMDNSMessage(uint32_t /*peerAddress*/, uint32_t xid, int t
    switch (type) {
       case MDNSPacketTypeServiceRecordRelease:
       case MDNSPacketTypeMyIPAnswer:
+         DEBUG_PRINTF("MDNS::_sendMDNSMessage() Release or MyIpAnswer\n");
          dnsHeader->answerCount = ethutil_htons(1);
          dnsHeader->queryResponse = 1;
          dnsHeader->authoritiveAnswer = 1;
@@ -313,6 +324,7 @@ MDNSError_t MDNS::_sendMDNSMessage(uint32_t /*peerAddress*/, uint32_t xid, int t
       case MDNSPacketTypeNameQuery:
       case MDNSPacketTypeServiceQuery:
          dnsHeader->queryCount = ethutil_htons(1);
+         DEBUG_PRINTF("MDNS::_sendMDNSMessage(%s) NameQuery or ServiceQuery\n");
          break;
       case MDNSPacketTypeNoIPv6AddrAvailable:
          dnsHeader->queryCount = ethutil_htons(1);
@@ -485,7 +497,9 @@ MDNSError_t MDNS::_sendMDNSMessage(uint32_t /*peerAddress*/, uint32_t xid, int t
    }
 
 
-   this->_udp->endPacket();
+   auto status = this->_udp->endPacket();
+   DEBUG_PRINTF("MDNS::_sendMDNSMessage() endPacket = %d\n", status);
+
 
 #if defined(_USE_MALLOC_)
 errorReturn:
@@ -563,6 +577,8 @@ MDNSError_t MDNS::_processMDNSQuery()
       int offset = sizeof(DNSHeader_t);
       uint8_t* buf = (uint8_t*)dnsHeader;
       int rLen = 0, tLen = 0;
+
+      DEBUG_PRINTF("MDNS::_processMDNSQuery()\n");
 
       // read over the query section 
       for (i=0; i<qCnt; i++) {         
@@ -1149,6 +1165,8 @@ int MDNS::addServiceRecord(const char* name, uint16_t port,
    int i, status = 0;
    MDNSServiceRecord_t* record = NULL;
       
+   DEBUG_PRINTF("MDNS::addServiceRecord()\n");
+
    if (NULL != name && 0 != port) {
       for (i=0; i < NumMDNSServiceRecords; i++) {
          if (NULL == this->_serviceRecords[i]) {
@@ -1183,16 +1201,25 @@ int MDNS::addServiceRecord(const char* name, uint16_t port,
                }
 
                this->_serviceRecords[i] = record;
-                              
+               DEBUG_PRINTF("MDNS::addServiceRecord() sendMDNSMessage() i=%d\n", i);
                status = (MDNSSuccess ==
                            this->_sendMDNSMessage(0, 0, (int)MDNSPacketTypeServiceRecord, i));
                
                break;
             }
          }
+         else {
+             record = this->_serviceRecords[i];
+             if (record->port == port && strncmp((char *)record->name, name, sizeof(record->name)) == 0 && proto == record->proto) {
+                 DEBUG_PRINTF("MDNS::addServiceRecord() sendMDNSMessage (resend) i=%d\n", i);
+                 status = (MDNSSuccess == this->_sendMDNSMessage(0, 0, (int)MDNSPacketTypeServiceRecord, i));
+                 break;
+             }
+         }
       }
    }
    
+   DEBUG_PRINTF("MDNS::addServiceRecord() return = %d\n", status);
    return status;
 
 errorReturn:
@@ -1210,10 +1237,16 @@ errorReturn:
    return 0;
 }
 
-void MDNS::_removeServiceRecord(int idx)
+void MDNS::_removeServiceRecord(int idx, int amplification, int delay)
 {
+    DEBUG_PRINTF("MDNS::_removeServiceRecord(%d)\n", idx);
    if (NULL != this->_serviceRecords[idx]) {
-      (void)this->_sendMDNSMessage(0, 0, (int)MDNSPacketTypeServiceRecordRelease, idx);
+       for (auto i = 0; i < 1 + amplification; ++i) {
+           if (i > 0) {
+               ::delay(delay);
+           }
+           (void)this->_sendMDNSMessage(0, 0, (int)MDNSPacketTypeServiceRecordRelease, idx);
+       }
       
       if (NULL != this->_serviceRecords[idx]->textContent)
          my_free(this->_serviceRecords[idx]->textContent);
@@ -1228,20 +1261,20 @@ void MDNS::_removeServiceRecord(int idx)
    }
 }
 
-void MDNS::removeServiceRecord(uint16_t port, MDNSServiceProtocol_t proto)
+void MDNS::removeServiceRecord(uint16_t port, MDNSServiceProtocol_t proto, int amplification, int delay)
 {
-   this->removeServiceRecord(NULL, port, proto);
+    this->removeServiceRecord(NULL, port, proto, amplification, delay);
 }
 
-void MDNS::removeServiceRecord(const char* name, uint16_t port,
-                                               MDNSServiceProtocol_t proto)
+void MDNS::removeServiceRecord(const char* name, uint16_t port, MDNSServiceProtocol_t proto, int amplification, int delay)
 {
+   DEBUG_PRINTF("MDNS::removeServiceRecord()\n");
    int i;
    for (i=0; i<NumMDNSServiceRecords; i++)
       if (port == this->_serviceRecords[i]->port &&
           proto == this->_serviceRecords[i]->proto &&
           (NULL == name || 0 == strcmp((char*)this->_serviceRecords[i]->name, name))) {
-             this->_removeServiceRecord(i);
+             this->_removeServiceRecord(i, amplification, delay);
              break;
           }
 }
@@ -1250,7 +1283,7 @@ void MDNS::removeAllServiceRecords()
 {
    int i;
    for (i=0; i<NumMDNSServiceRecords; i++)
-      this->_removeServiceRecord(i);
+      this->_removeServiceRecord(i, 0, 0);
 }
 
 void MDNS::_writeDNSName(const uint8_t* name, uint16_t* pPtr,
@@ -1260,6 +1293,8 @@ void MDNS::_writeDNSName(const uint8_t* name, uint16_t* pPtr,
    uint8_t* p1 = (uint8_t*)name, *p2, *p3;
    int i, c, len;
    
+   DEBUG_PRINTF("MDNS::writeDNSName(%s)\n", name);
+
    while(*p1) {
       c = 1;
       p2 = p1;
@@ -1336,6 +1371,8 @@ void MDNS::_writeServiceRecordName(int recordIndex, uint16_t* pPtr, uint8_t* buf
    uint8_t* name = tld ? this->_serviceRecords[recordIndex]->servName :
                          this->_serviceRecords[recordIndex]->name;
    
+   DEBUG_PRINTF("MDNS::_writeServiceRecordName(%s)\n", name);
+
    this->_writeDNSName(name, &ptr, buf, bufSize, tld);
    
    if (0 == tld) {
@@ -1355,6 +1392,8 @@ void MDNS::_writeServiceRecordPTR(int recordIndex, uint16_t* pPtr, uint8_t* buf,
                                                   int bufSize, uint32_t ttl)
 {
    uint16_t ptr = *pPtr;
+
+   DEBUG_PRINTF("MDNS::_writeServiceRecordPTR(%d, recordIndex)\n");
 
    this->_writeServiceRecordName(recordIndex, &ptr, buf, bufSize, 1);
    

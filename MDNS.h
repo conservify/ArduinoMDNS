@@ -110,7 +110,7 @@ private:
    
    uint8_t* _findFirstDotFromRight(const uint8_t* str);
    
-   void _removeServiceRecord(int idx);
+   void _removeServiceRecord(int idx, int amplification, int delay);
    
    int _matchStringPart(const uint8_t** pCmpStr, int* pCmpLen, const uint8_t* buf,
                         int dataLen);
@@ -132,8 +132,8 @@ public:
    int addServiceRecord(const char* name, uint16_t port, MDNSServiceProtocol_t proto,
                         const char* textContent);
    
-   void removeServiceRecord(uint16_t port, MDNSServiceProtocol_t proto);
-   void removeServiceRecord(const char* name, uint16_t port, MDNSServiceProtocol_t proto);
+   void removeServiceRecord(uint16_t port, MDNSServiceProtocol_t proto, int amplification, int delay);
+   void removeServiceRecord(const char* name, uint16_t port, MDNSServiceProtocol_t proto, int amplification, int delay);
       
    void removeAllServiceRecords();
    
