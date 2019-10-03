@@ -320,12 +320,12 @@ MDNSError_t MDNS::_sendMDNSMessage(uint32_t /*peerAddress*/, uint32_t xid, int t
          dnsHeader->additionalCount = ethutil_htons(1);
          dnsHeader->queryResponse = 1;
          dnsHeader->authoritiveAnswer = 1;
-         DEBUG_PRINTF("MDNS::_sendMDNSMessage(%s) MDNSPacketTypeServiceRecord\n");
+         DEBUG_PRINTF("MDNS::_sendMDNSMessage() MDNSPacketTypeServiceRecord\n");
          break;
       case MDNSPacketTypeNameQuery:
       case MDNSPacketTypeServiceQuery:
          dnsHeader->queryCount = ethutil_htons(1);
-         DEBUG_PRINTF("MDNS::_sendMDNSMessage(%s) MDNSPacketTypeNameQuery or MDNSPacketTypeServiceQuery\n");
+         DEBUG_PRINTF("MDNS::_sendMDNSMessage() MDNSPacketTypeNameQuery or MDNSPacketTypeServiceQuery\n");
          break;
       case MDNSPacketTypeNoIPv6AddrAvailable:
          dnsHeader->queryCount = ethutil_htons(1);
@@ -499,7 +499,7 @@ MDNSError_t MDNS::_sendMDNSMessage(uint32_t /*peerAddress*/, uint32_t xid, int t
 
 
    auto status = this->_udp->endPacket();
-   DEBUG_PRINTF("MDNS::_sendMDNSMessage() endPacket = %d\n", status);
+   DEBUG_PRINTF("MDNS::_sendMDNSMessage() endPacket = %d ptr = %d\n", status, ptr);
 
 
 #if defined(_USE_MALLOC_)
@@ -1203,9 +1203,8 @@ int MDNS::addServiceRecord(const char* name, uint16_t port,
 
                this->_serviceRecords[i] = record;
                DEBUG_PRINTF("MDNS::addServiceRecord() sendMDNSMessage() i=%d\n", i);
-               status = (MDNSSuccess ==
-                           this->_sendMDNSMessage(0, 0, (int)MDNSPacketTypeServiceRecord, i));
-
+               status = (MDNSSuccess == this->_sendMDNSMessage(0, 0, (int)MDNSPacketTypeNameQuery, i));
+               status = (MDNSSuccess == this->_sendMDNSMessage(0, 0, (int)MDNSPacketTypeServiceRecord, i));
                break;
             }
          }
