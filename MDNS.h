@@ -82,6 +82,7 @@ private:
    MDNSDataInternal_t    _mdnsData;
    MDNSState_t           _state;
    uint8_t*             _name;
+   uint8_t*             _buffer;
    MDNSServiceRecord_t* _serviceRecords[NumMDNSServiceRecords];
    unsigned long        _lastAnnounceMillis;
    

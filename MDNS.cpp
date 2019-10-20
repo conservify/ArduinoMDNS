@@ -136,6 +136,10 @@ MDNS::MDNS(UDP& udp)
 MDNS::~MDNS()
 {
   DEBUG_PRINTF("MDNS::~MDNS()");
+  if (_buffer != nullptr) {
+      my_free(_buffer);
+      _buffer = nullptr;
+  }
 	this->_udp->stop();
 }
 
@@ -544,11 +548,19 @@ MDNSError_t MDNS::_processMDNSQuery()
       goto errorReturn;
    }
 
-   udpBuffer = (uint8_t*) my_malloc(udp_len);  //allocate memory to hold _remaining UDP packet
-   if (NULL == udpBuffer) {
-      this->_udp->flush();
-      statusCode = MDNSOutOfMemory;
-      goto errorReturn;
+   if (_buffer == nullptr) {
+       _buffer = (uint8_t*) my_malloc(1024);
+       if (NULL == _buffer) {
+           this->_udp->flush();
+           statusCode = MDNSOutOfMemory;
+           goto errorReturn;
+       }
+   }
+   udpBuffer = _buffer;
+   if (udp_len > 1024) {
+       this->_udp->flush();
+       statusCode = MDNSOutOfMemory;
+       goto errorReturn;
    }
    this->_udp->read((uint8_t*)udpBuffer, udp_len);//read _remaining UDP packet from W5100/W5200 into memory
    ptr = (uintptr_t)udpBuffer;
@@ -1033,7 +1045,7 @@ MDNSError_t MDNS::_processMDNSQuery()
 
 #endif // (defined(HAS_SERVICE_REGISTRATION) && HAS_SERVICE_REGISTRATION) || (defined(HAS_NAME_BROWSING) && HAS_NAME_BROWSING)
 
-   my_free(udpBuffer);
+   // my_free(udpBuffer);
 
 errorReturn:
 
