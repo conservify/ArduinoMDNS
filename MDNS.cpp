@@ -879,7 +879,7 @@ MDNSError_t MDNS::_processMDNSQuery()
                               if (k < MDNS_MAX_SERVICES_PER_PACKET) {
                                  int l = dataLen - 2; // -2: data compression of service postfix
 
-                                 uint8_t* ptrName = (uint8_t*)my_malloc(l);
+                                 uint8_t* ptrName = NULL; // (uint8_t*)my_malloc(l);
 
                                  if (ptrName) {
 
@@ -950,7 +950,7 @@ MDNSError_t MDNS::_processMDNSQuery()
 
                            // if there's a content to this txt record, save it for delivery
                            if (dataLen > 1 && NULL == servTxt[j]) {
-                              servTxt[j] = (uint8_t*)my_malloc(dataLen+1);
+                               servTxt[j] = NULL; // (uint8_t*)my_malloc(dataLen+1);
                               if (NULL != servTxt[j]) {
 
                             	  memcpy((uint8_t*)servTxt[j], (uint16_t*)(ptr+offset) ,dataLen);
