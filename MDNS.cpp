@@ -31,6 +31,8 @@ extern "C" {
    uint32_t fkb_external_printf(const char *str, ...);
 }
 
+// #define DEBUG_LOGGING
+
 #if defined(DEBUG_LOGGING)
 #define DEBUG_PRINTF(str, ...) fkb_external_printf(str, ##__VA_ARGS__)
 #else
@@ -135,7 +137,7 @@ MDNS::MDNS(UDP& udp)
 
 MDNS::~MDNS()
 {
-  DEBUG_PRINTF("MDNS::~MDNS()");
+  DEBUG_PRINTF("MDNS::~MDNS()\n");
   if (_buffer != nullptr) {
       my_free(_buffer);
       _buffer = nullptr;
@@ -161,7 +163,7 @@ int MDNS::begin(const IPAddress& ip, const char* name)
 	if (statusCode)
 	statusCode = this->_udp->beginMulticast(mdnsMulticastIPAddr, MDNS_SERVER_PORT);
 
-  DEBUG_PRINTF("MDNS::begin()");
+  DEBUG_PRINTF("MDNS::begin()\n");
 
 	return statusCode;
 }
@@ -503,7 +505,7 @@ MDNSError_t MDNS::_sendMDNSMessage(uint32_t /*peerAddress*/, uint32_t xid, int t
 
 
    auto status = this->_udp->endPacket();
-   DEBUG_PRINTF("MDNS::_sendMDNSMessage() endPacket = %d ptr = %d\n", status, ptr);
+   fkb_external_printf("MDNS::_sendMDNSMessage() endPacket = %d ptr = %d type = %d\n", status, ptr, type);
 
 
 #if defined(_USE_MALLOC_)
@@ -1224,6 +1226,7 @@ int MDNS::addServiceRecord(const char* name, uint16_t port,
              record = this->_serviceRecords[i];
              if (record->port == port && strncmp((char *)record->name, name, sizeof(record->name)) == 0 && proto == record->proto) {
                  DEBUG_PRINTF("MDNS::addServiceRecord() sendMDNSMessage (resend) i=%d\n", i);
+                 status = (MDNSSuccess == this->_sendMDNSMessage(0, 0, (int)MDNSPacketTypeNameQuery, i));
                  status = (MDNSSuccess == this->_sendMDNSMessage(0, 0, (int)MDNSPacketTypeServiceRecord, i));
                  break;
              }
