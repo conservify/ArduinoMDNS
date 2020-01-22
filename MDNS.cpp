@@ -92,38 +92,16 @@ typedef enum _DNSOpCode_t {
    DNSOpUpdate    = 5
 } DNSOpCode_t;
 
-// for some reason, I get data corruption issues with normal malloc() on arduino 0017
-void* my_malloc(unsigned s)
+MDNS::MDNS(UDP& udp) : MDNS(udp, nullptr)
 {
-#if defined(_BROKEN_MALLOC_)
-   char* b = (char*)malloc(s+2);
-   if (b)
-      b++;
-
-   return (void*)b;
-#else
-   return malloc(s);
-#endif
 }
 
-void my_free(void* ptr)
-{
-#if defined(_BROKEN_MALLOC_)
-   char* b = (char*)ptr;
-   if (b)
-      b--;
-
-   free(b);
-#else
-   free(ptr);
-#endif
-}
-
-MDNS::MDNS(UDP& udp)
+MDNS::MDNS(UDP& udp, MDNSAllocator *allocator)
 {
    memset(&this->_mdnsData, 0, sizeof(MDNSDataInternal_t));
    memset(&this->_serviceRecords, 0, sizeof(this->_serviceRecords));
 
+   this->_allocator = allocator;
    this->_udp = &udp;
    this->_state = MDNSStateIdle;
 //   this->_sock = -1;
@@ -139,7 +117,7 @@ MDNS::~MDNS()
 {
   DEBUG_PRINTF("MDNS::~MDNS()\n");
   if (_buffer != nullptr) {
-      my_free(_buffer);
+      _allocator->free(_buffer);
       _buffer = nullptr;
   }
 	this->_udp->stop();
@@ -163,7 +141,7 @@ int MDNS::begin(const IPAddress& ip, const char* name)
 	if (statusCode)
 	statusCode = this->_udp->beginMulticast(mdnsMulticastIPAddr, MDNS_SERVER_PORT);
 
-  DEBUG_PRINTF("MDNS::begin()\n");
+    DEBUG_PRINTF("MDNS::begin()\n");
 
 	return statusCode;
 }
@@ -198,7 +176,7 @@ int MDNS::_initQuery(uint8_t idx, const char* name, unsigned long timeout)
                                                           MDNSPacketTypeServiceQuery,
                                              0));
    } else
-      my_free((void*)name);
+      _allocator->free((void*)name);
 
    return statusCode;
 }
@@ -206,7 +184,7 @@ int MDNS::_initQuery(uint8_t idx, const char* name, unsigned long timeout)
 void MDNS::_cancelQuery(uint8_t idx)
 {
    if (NULL != this->_resolveNames[idx]) {
-      my_free(this->_resolveNames[idx]);
+      _allocator->free(this->_resolveNames[idx]);
       this->_resolveNames[idx] = NULL;
    }
 }
@@ -218,7 +196,7 @@ int MDNS::resolveName(const char* name, unsigned long timeout)
 {
    this->cancelResolveName();
 
-   char* n = (char*)my_malloc(strlen(name) + 7);
+   char* n = (char*)_allocator->malloc(strlen(name) + 7 + 1);
    if (NULL == n)
       return 0;
 
@@ -257,7 +235,7 @@ int MDNS::startDiscoveringService(const char* serviceName,
 {
    this->stopDiscoveringService();
 
-   char* n = (char*)my_malloc(strlen(serviceName) + 13);
+   char* n = (char*)_allocator->malloc(strlen(serviceName) + 13 + 1);
    if (NULL == n)
       return 0;
 
@@ -301,7 +279,7 @@ MDNSError_t MDNS::_sendMDNSMessage(uint32_t /*peerAddress*/, uint32_t xid, int t
    DEBUG_PRINTF("MDNS::_sendMDNSMessage(%d, %d, %d)\n", xid, type, serviceRecord);
 
 #if defined(_USE_MALLOC_)
-   dnsHeader = (DNSHeader_t*)my_malloc(sizeof(DNSHeader_t));
+   dnsHeader = (DNSHeader_t*)_allocator->malloc(sizeof(DNSHeader_t));
    if (NULL == dnsHeader) {
       statusCode = MDNSOutOfMemory;
       goto errorReturn;
@@ -551,7 +529,7 @@ MDNSError_t MDNS::_processMDNSQuery()
    }
 
    if (_buffer == nullptr) {
-       _buffer = (uint8_t*) my_malloc(1024);
+       _buffer = (uint8_t*) _allocator->malloc(1024);
        if (NULL == _buffer) {
            this->_udp->flush();
            statusCode = MDNSOutOfMemory;
@@ -568,7 +546,7 @@ MDNSError_t MDNS::_processMDNSQuery()
    ptr = (uintptr_t)udpBuffer;
 
 #if defined(_USE_MALLOC_)
-   dnsHeader = (DNSHeader_t*)my_malloc(sizeof(DNSHeader_t));
+   dnsHeader = (DNSHeader_t*)_allocator->malloc(sizeof(DNSHeader_t));
    if (NULL == dnsHeader) {
       statusCode = MDNSOutOfMemory;
       goto errorReturn;
@@ -1039,9 +1017,9 @@ MDNSError_t MDNS::_processMDNSQuery()
          uint8_t k;
          for (k=0; k<MDNS_MAX_SERVICES_PER_PACKET; k++)
             if (NULL != ptrNames[k]) {
-               my_free(ptrNames[k]);
+               _allocator->free(ptrNames[k]);
                if (NULL != servTxt[k])
-                  my_free(servTxt[k]);
+                  _allocator->free(servTxt[k]);
             }
    }
 
@@ -1118,7 +1096,7 @@ void MDNS::run()
             }
 
             if (NULL != this->_resolveNames[i]) {
-               my_free(this->_resolveNames[i]);
+               _allocator->free(this->_resolveNames[i]);
                this->_resolveNames[i] = NULL;
             }
          }
@@ -1146,9 +1124,9 @@ int MDNS::setName(const char* name)
       return 0;
 
    if (this->_name != NULL)
-      my_free(this->_name);
+      _allocator->free(this->_name);
 
-   this->_name = (uint8_t*)my_malloc(strlen(name) + 7);
+   this->_name = (uint8_t*)_allocator->malloc(strlen(name) + 7 + 1);
    if (NULL == this->_name)
       return 0;
 
@@ -1185,16 +1163,16 @@ int MDNS::addServiceRecord(const char* name, uint16_t port,
    if (NULL != name && 0 != port) {
       for (i=0; i < NumMDNSServiceRecords; i++) {
          if (NULL == this->_serviceRecords[i]) {
-            record = (MDNSServiceRecord_t*)my_malloc(sizeof(MDNSServiceRecord_t));
+            record = (MDNSServiceRecord_t*)_allocator->malloc(sizeof(MDNSServiceRecord_t));
             if (NULL != record) {
                record->name = record->textContent = NULL;
 
-               record->name = (uint8_t*)my_malloc(strlen((char*)name));
+               record->name = (uint8_t*)_allocator->malloc(strlen((char*)name) + 1);
                if (NULL == record->name)
                   goto errorReturn;
 
-               if (NULL != textContent) {
-                  record->textContent = (uint8_t*)my_malloc(strlen((char*)textContent));
+               if (NULL != textContent && strlen(textContent) > 0) {
+                  record->textContent = (uint8_t*)_allocator->malloc(strlen((char*)textContent) + 1);
                   if (NULL == record->textContent)
                      goto errorReturn;
 
@@ -1206,9 +1184,13 @@ int MDNS::addServiceRecord(const char* name, uint16_t port,
                strcpy((char*)record->name, name);
 
                uint8_t* s = this->_findFirstDotFromRight(record->name);
-               record->servName = (uint8_t*)my_malloc(strlen((char*)s) + 12);
+               record->servName = (uint8_t*)_allocator->malloc(strlen((char*)s) + 12 + 1);
                if (record->servName) {
-                  strcpy((char*)record->servName, (const char*)s);
+                   // For some reason, prior to the malloc change this
+                   // was fine as a strcpy, then after this was
+                   // basically iterating to the end of memory.
+                   // strncpy((char*)record->servName, (const char*)s, strlen((char *)s));
+                   strcpy((char*)record->servName, (const char*)s);
 
                   const uint8_t* srv_type = this->_postfixForProtocol(proto);
                   if (srv_type)
@@ -1240,13 +1222,13 @@ int MDNS::addServiceRecord(const char* name, uint16_t port,
 errorReturn:
    if (NULL != record) {
       if (NULL != record->name)
-         my_free(record->name);
+         _allocator->free(record->name);
       if (NULL != record->servName)
-         my_free(record->servName);
+         _allocator->free(record->servName);
       if (NULL != record->textContent)
-         my_free(record->textContent);
+         _allocator->free(record->textContent);
 
-      my_free(record);
+      _allocator->free(record);
    }
 
    return 0;
@@ -1264,13 +1246,13 @@ void MDNS::_removeServiceRecord(int idx, int amplification, int delay)
        }
 
       if (NULL != this->_serviceRecords[idx]->textContent)
-         my_free(this->_serviceRecords[idx]->textContent);
+         _allocator->free(this->_serviceRecords[idx]->textContent);
 
       if (NULL != this->_serviceRecords[idx]->servName)
-         my_free(this->_serviceRecords[idx]->servName);
+         _allocator->free(this->_serviceRecords[idx]->servName);
 
-      my_free(this->_serviceRecords[idx]->name);
-      my_free(this->_serviceRecords[idx]);
+      _allocator->free(this->_serviceRecords[idx]->name);
+      _allocator->free(this->_serviceRecords[idx]);
 
       this->_serviceRecords[idx] = NULL;
    }
@@ -1483,6 +1465,6 @@ void MDNS::_finishedResolvingName(char* name, const byte ipAddr[4])
       this->_nameFoundCallback((const char*)name, IPAddress(ipAddr));
    }
 
-   my_free(this->_resolveNames[0]);
+   _allocator->free(this->_resolveNames[0]);
    this->_resolveNames[0] = NULL;
 }

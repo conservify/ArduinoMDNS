@@ -73,10 +73,18 @@ typedef void (*MDNSServiceFoundCallback)(const char*, MDNSServiceProtocol_t, con
 
 #define  NumMDNSServiceRecords   (8)
 
+class MDNSAllocator {
+public:
+    virtual void *malloc(size_t size) = 0;
+    virtual void free(void *ptr) = 0;
+
+};
+
 //class MDNS
 class MDNS
 {
 private:
+   MDNSAllocator        *_allocator{ nullptr };
    UDP*                  _udp;
    IPAddress             _ipAddress;
    MDNSDataInternal_t    _mdnsData;
@@ -85,13 +93,13 @@ private:
    uint8_t*             _buffer;
    MDNSServiceRecord_t* _serviceRecords[NumMDNSServiceRecords];
    unsigned long        _lastAnnounceMillis;
-   
+
    uint8_t*             _resolveNames[2];
    unsigned long        _resolveLastSendMillis[2];
    unsigned long        _resolveTimeouts[2];
-   
+
    MDNSServiceProtocol_t _resolveServiceProto;
-   
+
    MDNSNameFoundCallback      _nameFoundCallback;
    MDNSServiceFoundCallback   _serviceFoundCallback;
 
@@ -105,44 +113,49 @@ private:
    void _writeServiceRecordName(int recordIndex, uint16_t* pPtr, uint8_t* buf, int bufSize, int tld);
    void _writeServiceRecordPTR(int recordIndex, uint16_t* pPtr, uint8_t* buf, int bufSize,
                                uint32_t ttl);
-   
+
    int _initQuery(uint8_t idx, const char* name, unsigned long timeout);
    void _cancelQuery(uint8_t idx);
-   
+
    uint8_t* _findFirstDotFromRight(const uint8_t* str);
-   
+
    void _removeServiceRecord(int idx, int amplification, int delay);
-   
+
    int _matchStringPart(const uint8_t** pCmpStr, int* pCmpLen, const uint8_t* buf,
                         int dataLen);
-   
+
    const uint8_t* _postfixForProtocol(MDNSServiceProtocol_t proto);
-   
+
    void _finishedResolvingName(char* name, const byte ipAddr[4]);
 public:
    MDNS(UDP& udp);
+   MDNS(UDP& udp, MDNSAllocator *allocator);
    ~MDNS();
-   
+
+   void allocator(MDNSAllocator *allocator) {
+       _allocator = allocator;
+   }
+
    int begin(const IPAddress& ip);
    int begin(const IPAddress& ip, const char* name);
    void run();
-   
+
    int setName(const char* name);
-   
+
    int addServiceRecord(const char* name, uint16_t port, MDNSServiceProtocol_t proto);
    int addServiceRecord(const char* name, uint16_t port, MDNSServiceProtocol_t proto,
                         const char* textContent);
-   
+
    void removeServiceRecord(uint16_t port, MDNSServiceProtocol_t proto, int amplification, int delay);
    void removeServiceRecord(const char* name, uint16_t port, MDNSServiceProtocol_t proto, int amplification, int delay);
-      
+
    void removeAllServiceRecords();
-   
+
    void setNameResolvedCallback(MDNSNameFoundCallback newCallback);
    int resolveName(const char* name, unsigned long timeout);
    void cancelResolveName();
    int isResolvingName();
-   
+
    void setServiceFoundCallback(MDNSServiceFoundCallback newCallback);
    int startDiscoveringService(const char* serviceName, MDNSServiceProtocol_t proto,
                                unsigned long timeout);
