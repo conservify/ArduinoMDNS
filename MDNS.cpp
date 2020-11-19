@@ -146,6 +146,19 @@ int MDNS::begin(const IPAddress& ip, const char* name)
 	while (millis() < 3000) delay(100);
 
 	_ipAddress = ip;
+    _buffer = nullptr;
+    _name = nullptr;
+    _resolveNames[0] = nullptr;
+    _resolveNames[1] = nullptr;
+    _lastAnnounceMillis = 0;
+    for (auto i = 0u; i < NumMDNSServiceRecords; ++i) {
+        _serviceRecords[i] = nullptr;
+    }
+    _lastAnnounceMillis = 0;
+    _resolveLastSendMillis[0] = 0;
+    _resolveLastSendMillis[1] = 0;
+    _resolveTimeouts[0] = 0;
+    _resolveTimeouts[1] = 0;
 
 	int statusCode = 0;
 	statusCode = this->setName(name);

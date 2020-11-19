@@ -62,9 +62,9 @@ typedef MDNSServiceProtocol_t MDNSServiceProtocol;
 typedef struct _MDNSServiceRecord_t {
    uint16_t                port;
    MDNSServiceProtocol_t   proto;
-   uint8_t*                name;
-   uint8_t*                servName;
-   uint8_t*                textContent;
+   uint8_t*                name{ nullptr };
+   uint8_t*                servName{ nullptr };
+   uint8_t*                textContent{ nullptr };
 } MDNSServiceRecord_t;
 
 typedef void (*MDNSNameFoundCallback)(const char*, IPAddress);
@@ -85,18 +85,18 @@ class MDNS
 {
 private:
    MDNSAllocator        *_allocator{ nullptr };
-   UDP*                  _udp;
+   UDP*                  _udp{ nullptr };
    IPAddress             _ipAddress;
    MDNSDataInternal_t    _mdnsData;
    MDNSState_t           _state;
-   uint8_t*             _name;
-   uint8_t*             _buffer;
-   MDNSServiceRecord_t* _serviceRecords[NumMDNSServiceRecords];
-   unsigned long        _lastAnnounceMillis;
+   uint8_t*             _name{ nullptr };
+   uint8_t*             _buffer{ nullptr };
+   MDNSServiceRecord_t* _serviceRecords[NumMDNSServiceRecords] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+   unsigned long        _lastAnnounceMillis{ 0 };
 
-   uint8_t*             _resolveNames[2];
-   unsigned long        _resolveLastSendMillis[2];
-   unsigned long        _resolveTimeouts[2];
+   uint8_t*             _resolveNames[2] = { nullptr, nullptr };
+   unsigned long        _resolveLastSendMillis[2] = { 0, 0 };
+   unsigned long        _resolveTimeouts[2] = { 0, 0 };
 
    MDNSServiceProtocol_t _resolveServiceProto;
 
