@@ -29,9 +29,20 @@
 extern "C" {
    #include <utility/EthernetUtil.h>
    uint32_t fkb_external_printf(const char *str, ...);
+   void fk_assert(const char *assertion, const char *file, int32_t line, const char *f, ...);
 }
 
-// #define DEBUG_LOGGING
+#define FK_ASSERT_INTERNAL(expression, f, ...)        (void)((expression) || (fk_assert(#expression, __FILE__, __LINE__, f, ##__VA_ARGS__), 0))
+#define FK_ASSERT(expression)                         FK_ASSERT_INTERNAL(expression, "")
+
+
+#if defined(__SAMD51__)
+#define FK_ASSERT_ADDRESS(ptr)                        FK_ASSERT((intptr_t)ptr != 0 && (intptr_t)ptr >= 0x20000000 && (intptr_t)ptr < 0x20040000);
+#else
+#define FK_ASSERT_ADDRESS(ptr)                        FK_ASSERT((intptr_t)ptr != 0);
+#endif
+
+#define DEBUG_LOGGING
 
 #if defined(DEBUG_LOGGING)
 #define DEBUG_PRINTF(str, ...) fkb_external_printf(str, ##__VA_ARGS__)
@@ -536,6 +547,11 @@ MDNSError_t MDNS::_processMDNSQuery()
            goto errorReturn;
        }
    }
+
+   #if defined(__SAMD51__)
+   FK_ASSERT_ADDRESS(_buffer);
+   #endif
+
    udpBuffer = _buffer;
    if (udp_len > 1024) {
        this->_udp->flush();
@@ -1290,7 +1306,14 @@ void MDNS::_writeDNSName(const uint8_t* name, uint16_t* pPtr,
    uint8_t* p1 = (uint8_t*)name, *p2, *p3;
    int i, c, len;
 
+   if (name == nullptr) {
+       DEBUG_PRINTF("MDNS::writeDNSName(<nullptr>)\n");
+       return;
+   }
+
    DEBUG_PRINTF("MDNS::writeDNSName(%s)\n", name);
+
+   FK_ASSERT_ADDRESS(buf);
 
    while(*p1) {
       c = 1;
